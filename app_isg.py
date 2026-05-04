@@ -1,94 +1,82 @@
 import streamlit as st
-from streamlit_gsheets import GSheetsConnection
 import pandas as pd
+import os
 
 # --- AYARLAR ---
+DOSYA_YOLU = "öncelikdereceliokulbilgi.xls"
 ANAHTAR_SUTUN = "KURUM KODU"
-ORTAK_SIFRE = "İSGVERİ35"
+ORTAK_SIFRE = "ISG2027"  # Her iki ilçe için ortak şifre
 
-st.set_page_config(page_title="İSG VERİ SİSTEMİ", page_icon="🛡️", layout="centered")
+st.set_page_config(page_title="İSG VERİ TOPLAMA", page_icon="🛡️")
+st.title("🛡️ İSG VERİ TOPLAMA")
 
-# --- BAŞLIK ---
-st.markdown("<h1 style='text-align: center;'>🛡️ İSG VERİ TOPLAMA SİSTEMİ</h1>", unsafe_allow_html=True)
+# Veri yükleme fonksiyonu
+@st.cache_data
+def veri_yukle():
+    if os.path.exists(DOSYA_YOLU):
+        try:
+            return pd.read_excel(DOSYA_YOLU)
+        except Exception as e:
+            st.error(f"Excel okuma hatası: {e}")
+            return None
+    return None
 
-# --- ŞİFRE KONTROLÜ (Session State ile) ---
-if "auth" not in st.session_state:
-    st.session_state["auth"] = False
+df = veri_yukle()
 
-if not st.session_state["auth"]:
-    with st.container():
-        st.warning("Lütfen sisteme erişmek için yetkili şifresini giriniz.")
-        girilen_sifre = st.text_input("Sistem Şifresi:", type="password")
-        if st.button("Giriş Yap"):
-            if girilen_sifre == ORTAK_SIFRE:
-                st.session_state["auth"] = True
-                st.rerun()
-            else:
-                st.error("Hatalı Şifre!")
-    st.stop()
+if df is not None:
+    # 1. ADIM: TEK ŞİFRE DOĞRULAMA
+    st.sidebar.header("🔐 Yetkili Girişi")
+    girilen_sifre = st.sidebar.text_input("Sistem Şifresini Giriniz:", type="password")
 
-# --- GOOGLE SHEETS BAĞLANTISI ---
-try:
-    conn = st.connection("gsheets", type=GSheetsConnection)
-    
-    @st.cache_data(ttl=5)
-    def veri_yukle():
-        data = conn.read()
-        # Başlıkları temizle (Gizli Enter ve boşluklar için)
-        data.columns = [str(c).replace('\n', ' ').strip() for c in data.columns]
-        return data.astype(object)
-
-    df = veri_yukle()
-
-except Exception as e:
-    st.error(f"⚠️ Bağlantı Hatası: {e}")
-    st.info("Lütfen Secrets ayarlarındaki linki ve Google Tablo paylaşım izinlerini kontrol edin.")
-    st.stop()
-
-# --- KURUM SORGULAMA ---
-st.subheader("🔍 Kurum Sorgulama")
-kurum_kodu = st.text_input("Kurum Kodunu Giriniz:", placeholder="Örn: 776379")
-
-if kurum_kodu:
-    df[ANAHTAR_SUTUN] = df[ANAHTAR_SUTUN].astype(str).str.strip()
-    sonuc = df[df[ANAHTAR_SUTUN] == kurum_kodu.strip()]
-    
-    if not sonuc.empty:
-        idx = sonuc.index[0]
-        st.success(f"🏫 **KURUM:** {df.at[idx, 'OKUL ADI']}")
+    if girilen_sifre == ORTAK_SIFRE:
+        st.sidebar.success("Erişim Onaylandı")
         
-        with st.form("isg_final_form"):
-            st.markdown("### 📝 Bilgi Güncelleme")
+        # 2. ADIM: KURUM KODU SORGULAMA
+        kurum_kodu = st.text_input("Kurum Kodunuzu Giriniz:", placeholder="Örn: 776379")
+        
+        if kurum_kodu:
+            # Kodları metne çevirip temizle
+            df[ANAHTAR_SUTUN] = df[ANAHTAR_SUTUN].astype(str).str.strip()
+            sonuc = df[df[ANAHTAR_SUTUN] == kurum_kodu.strip()]
             
-            c1 = 'ÖZEL GÜVENLİK GÖREVLİSİ SAYISI'
-            c2 = 'SABİT OKUL GÖREVLİSİ (VAR/YOK)'
-            c3 = 'ELEKTRONİK İNCELEME CİHAZI (VAR/YOK)'
-            c4 = 'GÜVENLİK AMAÇLI TURNİKE (VAR/YOK)'
-
-            def g_val(col):
-                val = df.at[idx, col]
-                return val if pd.notna(val) else ""
-
-            v1 = st.number_input("Güvenlik Sayısı", min_value=0, 
-                                 value=int(df.at[idx, c1]) if str(df.at[idx, c1]).isdigit() else 0)
-            v2 = st.selectbox("Sabit Görevli", ["VAR", "YOK"], index=0 if str(g_val(c2)).upper() == "VAR" else 1)
-            v3 = st.selectbox("E-İnceleme Cihazı", ["VAR", "YOK"], index=0 if str(g_val(c3)).upper() == "VAR" else 1)
-            v4 = st.selectbox("Turnike", ["VAR", "YOK"], index=0 if str(g_val(c4)).upper() == "VAR" else 1)
-
-            if st.form_submit_button("💾 KAYDET"):
-                df.at[idx, c1] = v1
-                df.at[idx, c2] = v2
-                df.at[idx, c3] = v3
-                df.at[idx, c4] = v4
+            if not sonuc.empty:
+                idx = sonuc.index[0]
+                okul_adi = df.at[idx, 'OKUL ADI']
+                st.success(f"📌 Kurum: {okul_adi}")
                 
-                conn.update(data=df)
-                st.cache_data.clear()
-                st.balloons()
-                st.success(f"✅ {df.at[idx, 'OKUL ADI']} verileri güncellendi.")
+                with st.form("isg_form_tek"):
+                    st.subheader("İSG Veri Giriş Formu")
+                    
+                    g_sayisi = st.number_input("Özel Güvenlik Görevlisi Sayısı", 
+                                               min_value=0, 
+                                               value=int(df.at[idx, 'ÖZEL GÜVENLİK \nGÖREVLİSİ SAYISI']) if pd.notna(df.at[idx, 'ÖZEL GÜVENLİK \nGÖREVLİSİ SAYISI']) else 0)
+                    
+                    sabit = st.selectbox("Sabit Okul Görevlisi", ["VAR", "YOK"], 
+                                         index=0 if str(df.at[idx, 'SABİT OKUL GÖREVLİSİ\n(VAR/YOK)']).upper() == "VAR" else 1)
+                    
+                    cihaz = st.selectbox("Elektronik İnceleme Cihazı", ["VAR", "YOK"], 
+                                         index=0 if str(df.at[idx, 'ELEKTRONİK İNCELEME CİHAZI\n(VAR/YOK)']).upper() == "VAR" else 1)
+                    
+                    turnike = st.selectbox("Güvenlik Amaçlı Turnike", ["VAR", "YOK"], 
+                                           index=0 if str(df.at[idx, 'GÜVENLİK AMAÇLI TURNİKE\n(VAR/YOK)']).upper() == "VAR" else 1)
+                    
+                    if st.form_submit_button("Bilgileri Sisteme İşle"):
+                        # Veriyi güncelle
+                        df.at[idx, 'ÖZEL GÜVENLİK \nGÖREVLİSİ SAYISI'] = g_sayisi
+                        df.at[idx, 'SABİT OKUL GÖREVLİSİ\n(VAR/YOK)'] = sabit
+                        df.at[idx, 'ELEKTRONİK İNCELEME CİHAZI\n(VAR/YOK)'] = cihaz
+                        df.at[idx, 'GÜVENLİK AMAÇLI TURNİKE\n(VAR/YOK)'] = turnike
+                        
+                        # Dosyayı kaydet
+                        df.to_excel(DOSYA_YOLU, index=False)
+                        st.balloons()
+                        st.success(f"{okul_adi} verileri başarıyla güncellendi.")
+            else:
+                st.warning("Bu kurum koduna ait bir kayıt bulunamadı.")
+    
+    elif girilen_sifre != "":
+        st.sidebar.error("Hatalı Şifre!")
     else:
-        st.error("❌ Kurum kodu bulunamadı.")
-
-# Çıkış Butonu
-if st.sidebar.button("Güvenli Çıkış"):
-    st.session_state["auth"] = False
-    st.rerun()
+        st.info("İşlem yapmak için lütfen sol taraftaki menüden sistem şifresini giriniz.")
+else:
+    st.error("Sistem dosyası yüklenemedi.")
