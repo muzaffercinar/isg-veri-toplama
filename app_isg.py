@@ -5,7 +5,7 @@ import os
 # --- AYARLAR ---
 DOSYA_YOLU = "öncelikdereceliokulbilgi.xls"
 ANAHTAR_SUTUN = "KURUM KODU"
-ORTAK_SIFRE = "ISG2027"  # Her iki ilçe için ortak şifre
+ORTAK_SIFRE = "İSGVERİ35"  # Yeni ortak şifreniz
 
 st.set_page_config(page_title="İSG VERİ TOPLAMA", page_icon="🛡️")
 st.title("🛡️ İSG VERİ TOPLAMA")
@@ -24,7 +24,7 @@ def veri_yukle():
 df = veri_yukle()
 
 if df is not None:
-    # 1. ADIM: TEK ŞİFRE DOĞRULAMA
+    # 1. ADIM: ŞİFRE DOĞRULAMA
     st.sidebar.header("🔐 Yetkili Girişi")
     girilen_sifre = st.sidebar.text_input("Sistem Şifresini Giriniz:", type="password")
 
@@ -35,7 +35,7 @@ if df is not None:
         kurum_kodu = st.text_input("Kurum Kodunuzu Giriniz:", placeholder="Örn: 776379")
         
         if kurum_kodu:
-            # Kodları metne çevirip temizle
+            # Kodları temizle ve eşleştir
             df[ANAHTAR_SUTUN] = df[ANAHTAR_SUTUN].astype(str).str.strip()
             sonuc = df[df[ANAHTAR_SUTUN] == kurum_kodu.strip()]
             
@@ -44,9 +44,10 @@ if df is not None:
                 okul_adi = df.at[idx, 'OKUL ADI']
                 st.success(f"📌 Kurum: {okul_adi}")
                 
-                with st.form("isg_form_tek"):
+                with st.form("isg_form_v2"):
                     st.subheader("İSG Veri Giriş Formu")
                     
+                    # Mevcut verileri çekerek form alanlarını doldur
                     g_sayisi = st.number_input("Özel Güvenlik Görevlisi Sayısı", 
                                                min_value=0, 
                                                value=int(df.at[idx, 'ÖZEL GÜVENLİK \nGÖREVLİSİ SAYISI']) if pd.notna(df.at[idx, 'ÖZEL GÜVENLİK \nGÖREVLİSİ SAYISI']) else 0)
@@ -67,7 +68,7 @@ if df is not None:
                         df.at[idx, 'ELEKTRONİK İNCELEME CİHAZI\n(VAR/YOK)'] = cihaz
                         df.at[idx, 'GÜVENLİK AMAÇLI TURNİKE\n(VAR/YOK)'] = turnike
                         
-                        # Dosyayı kaydet
+                        # Excel'e kaydet
                         df.to_excel(DOSYA_YOLU, index=False)
                         st.balloons()
                         st.success(f"{okul_adi} verileri başarıyla güncellendi.")
@@ -77,6 +78,6 @@ if df is not None:
     elif girilen_sifre != "":
         st.sidebar.error("Hatalı Şifre!")
     else:
-        st.info("İşlem yapmak için lütfen sol taraftaki menüden sistem şifresini giriniz.")
+        st.info("İşlem yapmak için sol menüden 'İSGVERİ35' şifresini giriniz.")
 else:
-    st.error("Sistem dosyası yüklenemedi.")
+    st.error("Excel dosyası yüklenemedi.")
