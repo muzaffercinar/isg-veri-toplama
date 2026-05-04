@@ -11,29 +11,30 @@ st.set_page_config(page_title="İSG VERİ SİSTEMİ", page_icon="🛡️", layou
 # --- BAŞLIK ---
 st.markdown("<h1 style='text-align: center;'>🛡️ İSG VERİ TOPLAMA SİSTEMİ</h1>", unsafe_allow_html=True)
 
-# --- ŞİFRE KONTROLÜ ---
+# --- ŞİFRE KONTROLÜ (Session State ile) ---
 if "auth" not in st.session_state:
     st.session_state["auth"] = False
 
 if not st.session_state["auth"]:
     with st.container():
-        st.warning("Bu sisteme erişmek için yetkili şifresi gereklidir.")
-        girilen_sifre = st.text_input("Sistem Şifresini Giriniz:", type="password")
+        st.warning("Lütfen sisteme erişmek için yetkili şifresini giriniz.")
+        girilen_sifre = st.text_input("Sistem Şifresi:", type="password")
         if st.button("Giriş Yap"):
             if girilen_sifre == ORTAK_SIFRE:
                 st.session_state["auth"] = True
                 st.rerun()
             else:
-                st.error("Hatalı Şifre! Lütfen tekrar deneyiniz.")
+                st.error("Hatalı Şifre!")
     st.stop()
 
-# --- GOOGLE SHEETS BAĞLANTISI (Şifre Doğruysa Çalışır) ---
+# --- GOOGLE SHEETS BAĞLANTISI ---
 try:
     conn = st.connection("gsheets", type=GSheetsConnection)
     
     @st.cache_data(ttl=5)
     def veri_yukle():
         data = conn.read()
+        # Başlıkları temizle (Gizli Enter ve boşluklar için)
         data.columns = [str(c).replace('\n', ' ').strip() for c in data.columns]
         return data.astype(object)
 
@@ -41,10 +42,10 @@ try:
 
 except Exception as e:
     st.error(f"⚠️ Bağlantı Hatası: {e}")
-    st.info("Secrets ayarlarını ve Google Tablo paylaşım izinlerini kontrol edin.")
+    st.info("Lütfen Secrets ayarlarındaki linki ve Google Tablo paylaşım izinlerini kontrol edin.")
     st.stop()
 
-# --- SORGULAMA VE VERİ GİRİŞİ ---
+# --- KURUM SORGULAMA ---
 st.subheader("🔍 Kurum Sorgulama")
 kurum_kodu = st.text_input("Kurum Kodunu Giriniz:", placeholder="Örn: 776379")
 
@@ -56,45 +57,38 @@ if kurum_kodu:
         idx = sonuc.index[0]
         st.success(f"🏫 **KURUM:** {df.at[idx, 'OKUL ADI']}")
         
-        with st.form("isg_guncelleme_formu"):
-            st.markdown("### 📝 Güncel Bilgileri Giriniz")
+        with st.form("isg_final_form"):
+            st.markdown("### 📝 Bilgi Güncelleme")
             
-            col1 = 'ÖZEL GÜVENLİK GÖREVLİSİ SAYISI'
-            col2 = 'SABİT OKUL GÖREVLİSİ (VAR/YOK)'
-            col3 = 'ELEKTRONİK İNCELEME CİHAZI (VAR/YOK)'
-            col4 = 'GÜVENLİK AMAÇLI TURNİKE (VAR/YOK)'
+            c1 = 'ÖZEL GÜVENLİK GÖREVLİSİ SAYISI'
+            c2 = 'SABİT OKUL GÖREVLİSİ (VAR/YOK)'
+            c3 = 'ELEKTRONİK İNCELEME CİHAZI (VAR/YOK)'
+            c4 = 'GÜVENLİK AMAÇLI TURNİKE (VAR/YOK)'
 
-            def safe_val(c):
-                v = df.at[idx, c]
-                return v if pd.notna(v) else ""
+            def g_val(col):
+                val = df.at[idx, col]
+                return val if pd.notna(val) else ""
 
-            v_g_sayisi = st.number_input("Özel Güvenlik Görevlisi Sayısı", 
-                                         min_value=0, 
-                                         value=int(df.at[idx, col1]) if str(df.at[idx, col1]).isdigit() else 0)
-            
-            v_sabit = st.selectbox("Sabit Okul Görevlisi", ["VAR", "YOK"], 
-                                   index=0 if str(safe_val(col2)).upper() == "VAR" else 1)
-            
-            v_cihaz = st.selectbox("Elektronik İnceleme Cihazı", ["VAR", "YOK"], 
-                                   index=0 if str(safe_val(col3)).upper() == "VAR" else 1)
-            
-            v_turnike = st.selectbox("Güvenlik Amaçlı Turnike", ["VAR", "YOK"], 
-                                     index=0 if str(safe_val(col4)).upper() == "VAR" else 1)
+            v1 = st.number_input("Güvenlik Sayısı", min_value=0, 
+                                 value=int(df.at[idx, c1]) if str(df.at[idx, c1]).isdigit() else 0)
+            v2 = st.selectbox("Sabit Görevli", ["VAR", "YOK"], index=0 if str(g_val(c2)).upper() == "VAR" else 1)
+            v3 = st.selectbox("E-İnceleme Cihazı", ["VAR", "YOK"], index=0 if str(g_val(c3)).upper() == "VAR" else 1)
+            v4 = st.selectbox("Turnike", ["VAR", "YOK"], index=0 if str(g_val(c4)).upper() == "VAR" else 1)
 
-            if st.form_submit_button("💾 SİSTEME İŞLE VE KAYDET", use_container_width=True):
-                df.at[idx, col1] = v_g_sayisi
-                df.at[idx, col2] = v_sabit
-                df.at[idx, col3] = v_cihaz
-                df.at[idx, col4] = v_turnike
+            if st.form_submit_button("💾 KAYDET"):
+                df.at[idx, c1] = v1
+                df.at[idx, c2] = v2
+                df.at[idx, c3] = v3
+                df.at[idx, c4] = v4
                 
                 conn.update(data=df)
                 st.cache_data.clear()
                 st.balloons()
-                st.success("✅ Veriler başarıyla güncellendi!")
+                st.success(f"✅ {df.at[idx, 'OKUL ADI']} verileri güncellendi.")
     else:
-        st.error("❌ Bu kurum koduna ait bir kayıt bulunamadı.")
+        st.error("❌ Kurum kodu bulunamadı.")
 
-# Oturumu Kapat Butonu
+# Çıkış Butonu
 if st.sidebar.button("Güvenli Çıkış"):
     st.session_state["auth"] = False
     st.rerun()
