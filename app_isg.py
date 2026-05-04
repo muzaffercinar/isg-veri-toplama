@@ -5,8 +5,14 @@ import streamlit as st
 
 
 # --- AYARLAR ---
-ESKI_DOSYA_YOLU = "öncelikdereceliokulbilgi.xls"
-YENI_DOSYA_YOLU = "öncelikdereceliokulbilgi.xlsx"
+BASE_DIR = os.path.dirname(os.path.abspath(__file__))
+VERI_KLASORU = os.path.join(BASE_DIR, "veri")
+ESKI_DOSYA_ADI = "öncelikdereceliokulbilgi.xls"
+YENI_DOSYA_ADI = "öncelikdereceliokulbilgi.xlsx"
+KAYIT_DOSYA_ADI = "isg_kayitlari.tsv"
+ESKI_DOSYA_YOLU = os.path.join(VERI_KLASORU, ESKI_DOSYA_ADI)
+YENI_DOSYA_YOLU = os.path.join(VERI_KLASORU, YENI_DOSYA_ADI)
+KAYIT_DOSYA_YOLU = os.path.join(VERI_KLASORU, KAYIT_DOSYA_ADI)
 ANAHTAR_SUTUN = "KURUM KODU"
 ORTAK_SIFRE = "İSGVERİ35"
 OKUL_ADI_SUTUNU = "OKUL ADI"
@@ -27,6 +33,22 @@ def veri_dosyasi_bul():
     return None
 
 
+def veri_klasorunu_hazirla():
+    os.makedirs(VERI_KLASORU, exist_ok=True)
+
+
+def yuklenen_dosyayi_kaydet(yuklenen_dosya):
+    veri_klasorunu_hazirla()
+    dosya_adi = yuklenen_dosya.name.lower()
+    hedef_yol = YENI_DOSYA_YOLU if dosya_adi.endswith(".xlsx") else ESKI_DOSYA_YOLU
+
+    with open(hedef_yol, "wb") as dosya:
+        dosya.write(yuklenen_dosya.getbuffer())
+
+    veri_yukle.clear()
+    return hedef_yol
+
+
 def sayi_degeri_al(deger):
     if pd.isna(deger):
         return 0
@@ -43,21 +65,31 @@ def metin_degeri_al(deger):
     return str(deger).strip()
 
 
-def veri_kaydet(df):
-    df.to_excel(YENI_DOSYA_YOLU, index=False)
-    veri_yukle.clear()
+def veri_kaydet(kurum_kodu, okul_adi, guvenlik_sayisi, sabit, cihaz, turnike):
+    veri_klasorunu_hazirla()
 
-    if os.path.exists(ESKI_DOSYA_YOLU):
-        return (
-            "Bilgiler başarıyla kaydedildi. .xls yazma hatasını önlemek için kayıt "
-            ".xlsx dosyasına yapıldı."
-        )
+    baslik = (
+        "Kurum Kodu\tOkul Adı\tÖzel Güvenlik Görevlisi Sayısı\t"
+        "Sabit Okul Görevlisi\tElektronik İnceleme Cihazı\t"
+        "Güvenlik Amaçlı Turnike\n"
+    )
+    kayit_satiri = (
+        f"{kurum_kodu}\t{okul_adi}\t{guvenlik_sayisi}\t"
+        f"{sabit}\t{cihaz}\t{turnike}\n"
+    )
 
-    return "Bilgiler başarıyla kaydedildi!"
+    with open(KAYIT_DOSYA_YOLU, "a", encoding="utf-8") as dosya:
+        if dosya.tell() == 0:
+            dosya.write(baslik)
+        dosya.write(kayit_satiri)
+
+    return f"Bilgiler başarıyla kaydedildi: {KAYIT_DOSYA_YOLU}"
 
 
 # --- BAŞLIK ---
 st.title("🛡️ İSG VERİ TOPLAMA")
+st.caption(f"Yerel veri klasoru: {VERI_KLASORU}")
+st.caption(f"Kayıt dosyası: {KAYIT_DOSYA_YOLU}")
 
 
 # --- 1. ADIM: ANA EKRANDA ŞİFRE KONTROLÜ ---
@@ -130,60 +162,4 @@ if df is not None:
                     sutun for sutun in [c1, c2, c3, c4] if sutun not in df.columns
                 ]
 
-                if eksik_sutunlar:
-                    st.error(
-                        "Excel dosyasında eksik sütunlar var: "
-                        + ", ".join(eksik_sutunlar)
-                    )
-                else:
-                    g_sayisi = st.number_input(
-                        "Özel Güvenlik Görevlisi Sayısı",
-                        min_value=0,
-                        value=sayi_degeri_al(df.at[idx, c1]),
-                    )
-
-                    sabit = st.selectbox(
-                        "Sabit Okul Görevlisi",
-                        SECENEKLER,
-                        index=0
-                        if metin_degeri_al(df.at[idx, c2]).upper() == "VAR"
-                        else 1,
-                    )
-
-                    cihaz = st.selectbox(
-                        "Elektronik İnceleme Cihazı",
-                        SECENEKLER,
-                        index=0
-                        if metin_degeri_al(df.at[idx, c3]).upper() == "VAR"
-                        else 1,
-                    )
-
-                    turnike = st.selectbox(
-                        "Güvenlik Amaçlı Turnike",
-                        SECENEKLER,
-                        index=0
-                        if metin_degeri_al(df.at[idx, c4]).upper() == "VAR"
-                        else 1,
-                    )
-
-                    if st.form_submit_button(
-                        "Verileri Kaydet", use_container_width=True
-                    ):
-                        df.at[idx, c1] = g_sayisi
-                        df.at[idx, c2] = sabit
-                        df.at[idx, c3] = cihaz
-                        df.at[idx, c4] = turnike
-
-                        try:
-                            mesaj = veri_kaydet(df)
-                        except Exception as exc:
-                            st.error(f"Kaydetme hatası: {exc}")
-                        else:
-                            st.balloons()
-                            st.success(mesaj)
-        else:
-            st.warning("Bu kurum koduna ait bir okul bulunamadı.")
-else:
-    st.error(
-        f"Sistem dosyası bulunamadı. Önce {ESKI_DOSYA_YOLU} veya {YENI_DOSYA_YOLU} dosyasını ekleyin."
-    )
+       
