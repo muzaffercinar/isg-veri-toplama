@@ -145,16 +145,45 @@ if df is not None:
                     sabit = st.selectbox(
                         "Sabit Okul Görevlisi",
                         SECENEKLER,
-                        index=0 if metin_degeri_al(df.at[idx, c2]).upper() == "VAR" else 1,
+                        index=0
+                        if metin_degeri_al(df.at[idx, c2]).upper() == "VAR"
+                        else 1,
                     )
 
                     cihaz = st.selectbox(
                         "Elektronik İnceleme Cihazı",
                         SECENEKLER,
-                        index=0 if metin_degeri_al(df.at[idx, c3]).upper() == "VAR" else 1,
+                        index=0
+                        if metin_degeri_al(df.at[idx, c3]).upper() == "VAR"
+                        else 1,
                     )
 
                     turnike = st.selectbox(
                         "Güvenlik Amaçlı Turnike",
                         SECENEKLER,
-                        index=0 if metin_degeri_al(df.at[idx, c4]).upper() == "VAR" else 1,
+                        index=0
+                        if metin_degeri_al(df.at[idx, c4]).upper() == "VAR"
+                        else 1,
+                    )
+
+                    if st.form_submit_button(
+                        "Verileri Kaydet", use_container_width=True
+                    ):
+                        df.at[idx, c1] = g_sayisi
+                        df.at[idx, c2] = sabit
+                        df.at[idx, c3] = cihaz
+                        df.at[idx, c4] = turnike
+
+                        try:
+                            mesaj = veri_kaydet(df)
+                        except Exception as exc:
+                            st.error(f"Kaydetme hatası: {exc}")
+                        else:
+                            st.balloons()
+                            st.success(mesaj)
+        else:
+            st.warning("Bu kurum koduna ait bir okul bulunamadı.")
+else:
+    st.error(
+        f"Sistem dosyası bulunamadı. Önce {ESKI_DOSYA_YOLU} veya {YENI_DOSYA_YOLU} dosyasını ekleyin."
+    )
