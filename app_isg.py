@@ -1,9 +1,12 @@
+import os
+
 import pandas as pd
 import streamlit as st
-from streamlit_gsheets import GSheetsConnection
 
 
 # --- AYARLAR ---
+ESKI_DOSYA_YOLU = "öncelikdereceliokulbilgi.xls"
+YENI_DOSYA_YOLU = "öncelikdereceliokulbilgi.xlsx"
 ANAHTAR_SUTUN = "KURUM KODU"
 ORTAK_SIFRE = "İSGVERİ35"
 OKUL_ADI_SUTUNU = "OKUL ADI"
@@ -14,7 +17,14 @@ st.set_page_config(
     page_icon="🛡️",
     layout="centered",
 )
-conn = st.connection("gsheets", type=GSheetsConnection)
+
+
+def veri_dosyasi_bul():
+    if os.path.exists(YENI_DOSYA_YOLU):
+        return YENI_DOSYA_YOLU
+    if os.path.exists(ESKI_DOSYA_YOLU):
+        return ESKI_DOSYA_YOLU
+    return None
 
 
 def sayi_degeri_al(deger):
@@ -34,9 +44,16 @@ def metin_degeri_al(deger):
 
 
 def veri_kaydet(df):
-    conn.update(data=df)
+    df.to_excel(YENI_DOSYA_YOLU, index=False)
     veri_yukle.clear()
-    return "Bilgiler başarıyla Google Sheets'e kaydedildi!"
+
+    if os.path.exists(ESKI_DOSYA_YOLU):
+        return (
+            "Bilgiler başarıyla kaydedildi. .xls yazma hatasını önlemek için kayıt "
+            ".xlsx dosyasına yapıldı."
+        )
+
+    return "Bilgiler başarıyla kaydedildi!"
 
 
 # --- BAŞLIK ---
@@ -65,11 +82,15 @@ if not st.session_state["auth"]:
 # --- 2. ADIM: VERİ YÜKLEME ---
 @st.cache_data
 def veri_yukle():
+    veri_yolu = veri_dosyasi_bul()
+    if veri_yolu is None:
+        return None
+
     try:
-        data = conn.read(ttl=0)
+        data = pd.read_excel(veri_yolu)
         return data.astype(object)
     except Exception as exc:
-        st.error(f"Google Sheets okuma hatası: {exc}")
+        st.error(f"Excel okuma hatası: {exc}")
         return None
 
 
@@ -79,7 +100,7 @@ if df is not None:
     st.success("✅ Erişim Onaylandı.")
 
     if ANAHTAR_SUTUN not in df.columns:
-        st.error(f"Google Sheets tablosunda beklenen sütun bulunamadı: {ANAHTAR_SUTUN}")
+        st.error(f"Excel dosyasında beklenen sütun bulunamadı: {ANAHTAR_SUTUN}")
         st.stop()
 
     kurum_kodu = st.text_input("Kurum Kodunuzu Giriniz:", placeholder="Örn: 776379")
@@ -92,7 +113,7 @@ if df is not None:
             idx = sonuc.index[0]
 
             if OKUL_ADI_SUTUNU not in df.columns:
-                st.error("Google Sheets tablosunda OKUL ADI sütunu bulunamadı.")
+                st.error("Excel dosyasında OKUL ADI sütunu bulunamadı.")
                 st.stop()
 
             st.info(f"🏫 Okul: {df.at[idx, OKUL_ADI_SUTUNU]}")
@@ -111,7 +132,7 @@ if df is not None:
 
                 if eksik_sutunlar:
                     st.error(
-                        "Google Sheets tablosunda eksik sütunlar var: "
+                        "Excel dosyasında eksik sütunlar var: "
                         + ", ".join(eksik_sutunlar)
                     )
                 else:
@@ -137,24 +158,3 @@ if df is not None:
                         "Güvenlik Amaçlı Turnike",
                         SECENEKLER,
                         index=0 if metin_degeri_al(df.at[idx, c4]).upper() == "VAR" else 1,
-                    )
-
-                    if st.form_submit_button("Verileri Kaydet", use_container_width=True):
-                        df.at[idx, c1] = g_sayisi
-                        df.at[idx, c2] = sabit
-                        df.at[idx, c3] = cihaz
-                        df.at[idx, c4] = turnike
-
-                        try:
-                            mesaj = veri_kaydet(df)
-                        except Exception as exc:
-                            st.error(f"Kaydetme hatası: {exc}")
-                        else:
-                            st.balloons()
-                            st.success(mesaj)
-        else:
-            st.warning("Bu kurum koduna ait bir okul bulunamadı.")
-else:
-    st.error(
-        "Google Sheets verisi yüklenemedi. Streamlit secrets ayarlarınızı ve tablo paylaşım izinlerini kontrol edin."
-    )
